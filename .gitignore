@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+
+# Virtual environments
+env/
+venv/
+ENV/
+.venv/
+*.env
+*.flaskenv
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Flask-related
+instance/
+*.log
+
+# Bytecode & cache
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.manifest
+*.spec
+
+# Coverage / Testing
+.coverage
+.tox/
+.pytest_cache/
+htmlcov/
+
+# Other
+.mypy_cache/
+.cache/
+
