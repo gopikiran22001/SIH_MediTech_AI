@@ -97,7 +97,7 @@ class DoctorMappingService:
                 print("API key not configured")
                 return []
                 
-            url = f"{self.backend_url}/users/doctors/public"
+            url = f"{self.backend_url}/api/users/doctors/public"
             headers = {'x-api-key': self.api_key}
             params = {}
             if specialty:
