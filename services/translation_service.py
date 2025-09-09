@@ -1,168 +1,160 @@
 from deep_translator import GoogleTranslator
-from gtts import gTTS
-import io
-import base64
 from typing import Dict, Optional
-
-# Handle speech_recognition import for Python 3.13 compatibility
-try:
-    import speech_recognition as sr
-    SPEECH_RECOGNITION_AVAILABLE = True
-except ImportError:
-    SPEECH_RECOGNITION_AVAILABLE = False
-    sr = None
 
 class TranslationService:
     def __init__(self):
-        if SPEECH_RECOGNITION_AVAILABLE:
-            self.recognizer = sr.Recognizer()
-        else:
-            self.recognizer = None
         self.supported_languages = {
-            'english': 'en',
-            'hindi': 'hi',
-            'punjabi': 'pa'
+            'en': 'English',
+            'hi': 'Hindi',
+            'es': 'Spanish',
+            'fr': 'French',
+            'de': 'German',
+            'it': 'Italian',
+            'pt': 'Portuguese',
+            'ru': 'Russian',
+            'ja': 'Japanese',
+            'ko': 'Korean',
+            'zh': 'Chinese',
+            'ar': 'Arabic',
+            'bn': 'Bengali',
+            'ta': 'Tamil',
+            'te': 'Telugu',
+            'mr': 'Marathi',
+            'gu': 'Gujarati',
+            'kn': 'Kannada',
+            'ml': 'Malayalam',
+            'pa': 'Punjabi',
+            'ur': 'Urdu'
+        }
+        
+        # Medical term translations for common healthcare phrases
+        self.medical_phrases = {
+            'en': {
+                'symptoms': 'symptoms',
+                'pain': 'pain',
+                'fever': 'fever',
+                'headache': 'headache',
+                'doctor': 'doctor',
+                'medicine': 'medicine',
+                'hospital': 'hospital',
+                'emergency': 'emergency'
+            },
+            'hi': {
+                'symptoms': 'लक्षण',
+                'pain': 'दर्द',
+                'fever': 'बुखार',
+                'headache': 'सिरदर्द',
+                'doctor': 'डॉक्टर',
+                'medicine': 'दवा',
+                'hospital': 'अस्पताल',
+                'emergency': 'आपातकाल'
+            },
+            'es': {
+                'symptoms': 'síntomas',
+                'pain': 'dolor',
+                'fever': 'fiebre',
+                'headache': 'dolor de cabeza',
+                'doctor': 'médico',
+                'medicine': 'medicina',
+                'hospital': 'hospital',
+                'emergency': 'emergencia'
+            }
         }
     
-    def translate(self, text: str, source_lang: str = "auto", target_lang: str = "en") -> Dict:
+    def translate(self, text: str, target_language: str, source_language: str = 'auto') -> Dict:
+        """Translate text to target language"""
         try:
-            # Convert language names to codes
-            target_code = self.supported_languages.get(target_lang.lower(), target_lang)
+            # Validate target language
+            if target_language not in self.supported_languages:
+                return {
+                    'error': f'Unsupported target language: {target_language}',
+                    'supported_languages': self.supported_languages
+                }
             
-            # Perform translation using deep-translator
-            translator = GoogleTranslator(source='auto', target=target_code)
+            # Check if translation is needed
+            if source_language == target_language:
+                return {
+                    'original_text': text,
+                    'translated_text': text,
+                    'source_language': source_language,
+                    'target_language': target_language,
+                    'confidence': 1.0
+                }
+            
+            # Perform translation
+            translator = GoogleTranslator(source=source_language, target=target_language)
             translated_text = translator.translate(text)
             
-            return {
-                "original_text": text,
-                "translated_text": translated_text,
-                "source_language": "auto",
-                "target_language": target_code,
-                "confidence": None
-            }
-        except ConnectionError:
-            return {
-                "error": "Translation service unavailable",
-                "original_text": text,
-                "translated_text": text
-            }
-        except ValueError as e:
-            return {
-                "error": f"Invalid input: {str(e)}",
-                "original_text": text,
-                "translated_text": text
-            }
-        except Exception:
-            return {
-                "error": "Translation failed",
-                "original_text": text,
-                "translated_text": text
-            }
-    
-    def text_to_speech(self, text: str, language: str = "en") -> Dict:
-        audio_buffer = None
-        try:
-            # Convert language name to code
-            lang_code = self.supported_languages.get(language.lower(), language)
-            
-            # Generate speech
-            tts = gTTS(text=text, lang=lang_code, slow=False)
-            
-            # Convert to base64 for API response
-            audio_buffer = io.BytesIO()
-            tts.write_to_fp(audio_buffer)
-            audio_buffer.seek(0)
-            
-            audio_base64 = base64.b64encode(audio_buffer.read()).decode('utf-8')
+            # Detect source language if auto
+            detected_language = source_language
+            if source_language == 'auto':
+                try:
+                    detected_language = GoogleTranslator(source='auto', target='en').detect(text)
+                except:
+                    detected_language = 'unknown'
             
             return {
-                "text": text,
-                "language": lang_code,
-                "audio_base64": audio_base64,
-                "format": "mp3"
+                'original_text': text,
+                'translated_text': translated_text,
+                'source_language': detected_language,
+                'target_language': target_language,
+                'confidence': 0.9  # GoogleTranslator doesn't provide confidence scores
             }
+            
         except Exception as e:
             return {
-                "error": f"Text-to-speech failed: {str(e)}",
-                "text": text
+                'error': f'Translation failed: {str(e)}',
+                'original_text': text,
+                'fallback_translation': self._get_fallback_translation(text, target_language)
             }
-        finally:
-            if audio_buffer:
-                audio_buffer.close()
     
-    def speech_to_text(self, audio_data: bytes, language: str = "en") -> Dict:
-        if not SPEECH_RECOGNITION_AVAILABLE or not self.recognizer:
-            return {
-                "error": "Speech recognition not available (Python 3.13 compatibility issue)",
-                "recognized_text": ""
-            }
-            
-        audio_buffer = None
-        try:
-            # Convert language name to code
-            lang_code = self.supported_languages.get(language.lower(), language)
-            
-            # Convert audio data to AudioFile
-            audio_buffer = io.BytesIO(audio_data)
-            audio_file = sr.AudioFile(audio_buffer)
-            
-            with audio_file as source:
-                audio = self.recognizer.record(source)
-            
-            # Recognize speech
-            text = self.recognizer.recognize_google(audio, language=lang_code)
-            
-            return {
-                "recognized_text": text,
-                "language": lang_code,
-                "confidence": None  # Google API doesn't provide confidence
-            }
-        except sr.UnknownValueError:
-            return {
-                "error": "Could not understand audio",
-                "recognized_text": ""
-            }
-        except sr.RequestError as e:
-            return {
-                "error": f"Speech recognition service error: {str(e)}",
-                "recognized_text": ""
-            }
-        except Exception as e:
-            return {
-                "error": f"Speech-to-text failed: {str(e)}",
-                "recognized_text": ""
-            }
-        finally:
-            if audio_buffer:
-                audio_buffer.close()
+    def _get_fallback_translation(self, text: str, target_language: str) -> Optional[str]:
+        """Provide fallback translation for common medical terms"""
+        text_lower = text.lower().strip()
+        
+        if target_language in self.medical_phrases:
+            target_phrases = self.medical_phrases[target_language]
+            for en_term, translated_term in target_phrases.items():
+                if en_term in text_lower:
+                    return translated_term
+        
+        return None
     
     def get_supported_languages(self) -> Dict:
+        """Get list of supported languages"""
+        return self.supported_languages
+    
+    def translate_medical_terms(self, terms: list, target_language: str) -> Dict:
+        """Translate multiple medical terms"""
+        translations = {}
+        
+        for term in terms:
+            result = self.translate(term, target_language)
+            if 'error' not in result:
+                translations[term] = result['translated_text']
+            else:
+                translations[term] = term  # Keep original if translation fails
+        
         return {
-            "supported_languages": self.supported_languages,
-            "default_source": "auto",
-            "default_target": "en"
+            'translations': translations,
+            'target_language': target_language,
+            'total_terms': len(terms)
         }
     
     def detect_language(self, text: str) -> Dict:
+        """Detect the language of input text"""
         try:
-            from deep_translator import single_detection
-            detected_lang = single_detection(text, api_key=None)
+            detected = GoogleTranslator(source='auto', target='en').detect(text)
+            language_name = self.supported_languages.get(detected, 'Unknown')
+            
             return {
-                "text": text,
-                "detected_language": detected_lang,
-                "confidence": None
+                'text': text,
+                'detected_language': detected,
+                'language_name': language_name,
+                'confidence': 0.8
             }
         except Exception as e:
             return {
-                "error": f"Language detection failed: {str(e)}",
-                "text": text
+                'error': f'Language detection failed: {str(e)}',
+                'text': text
             }
-    
-    def is_ready(self) -> bool:
-        try:
-            # Test translation service
-            translator = GoogleTranslator(source='en', target='hi')
-            test_result = translator.translate("test")
-            return test_result is not None
-        except Exception:
-            return False

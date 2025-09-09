@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: healthcare-ai-service
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.18
+      - key: PIP_CACHE_DIR
+        value: /tmp/pip-cache
+    scaling:
+      minInstances: 1
+      maxInstances: 1
+    disk:
+      name: healthcare-ai-disk
+      mountPath: /tmp
+      sizeGB: 1

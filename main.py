@@ -1,136 +1,128 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
-import logging
-from services.symptom_checker import SymptomChecker
-from services.translation_service import TranslationService
-from services.risk_assessment import RiskAssessment
+import os
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Lazy imports to save memory
+app = FastAPI(title="Healthcare AI Service", version="1.0.0")
 
-app = FastAPI(title="MediTech AI Service", version="1.0.0")
-
-# Initialize services with error handling
-try:
-    symptom_checker = SymptomChecker()
-    logger.info("Symptom checker initialized successfully")
-except Exception as e:
-    logger.warning(f"Symptom checker initialization failed: {e}")
-    symptom_checker = None
-
-try:
-    translation_service = TranslationService()
-    logger.info("Translation service initialized successfully")
-except Exception as e:
-    logger.warning(f"Translation service initialization failed: {e}")
-    translation_service = None
-
-try:
-    risk_assessment = RiskAssessment()
-    logger.info("Risk assessment service initialized successfully")
-except Exception as e:
-    logger.warning(f"Risk assessment initialization failed: {e}")
-    risk_assessment = None
+# Global model storage
+models = {}
 
 class SymptomRequest(BaseModel):
-    symptoms: List[str]
+    symptoms: str
     age: Optional[int] = None
     gender: Optional[str] = None
-    medical_history: Optional[List[str]] = []
+
+class RiskResponse(BaseModel):
+    risk_level: str
+    confidence: float
+    recommendations: List[str]
+
+class ConditionResponse(BaseModel):
+    conditions: List[dict]
+    recommendations: List[str]
+
+class DoctorRequest(BaseModel):
+    condition: str
+    location: Optional[str] = None
+
+class PrescriptionRequest(BaseModel):
+    medicines: List[str]
+    location: Optional[str] = None
 
 class TranslationRequest(BaseModel):
     text: str
-    source_lang: str = "auto"
-    target_lang: str = "en"
+    target_language: str
 
-class RiskAssessmentRequest(BaseModel):
-    age: int
-    gender: str
-    symptoms: List[str]
-    medical_history: List[str]
-    lifestyle_factors: Optional[dict] = {}
+@app.on_event("startup")
+async def startup_event():
+    """Initialize models on startup"""
+    pass
 
 @app.get("/")
 async def root():
-    return {"message": "MediTech AI Service is running"}
+    return {"message": "Healthcare AI Service", "status": "running"}
 
-@app.post("/analyze-symptoms")
+@app.post("/risk-assessment", response_model=RiskResponse)
+async def assess_risk(request: SymptomRequest):
+    """Assess patient risk level based on symptoms"""
+    from services.risk_assessment import RiskAssessmentService
+    
+    if 'risk_service' not in models:
+        models['risk_service'] = RiskAssessmentService()
+    
+    result = models['risk_service'].assess_risk(
+        request.symptoms, 
+        request.age, 
+        request.gender
+    )
+    return result
+
+@app.post("/symptom-analysis", response_model=ConditionResponse)
 async def analyze_symptoms(request: SymptomRequest):
-    if not symptom_checker:
-        raise HTTPException(status_code=503, detail="Symptom checker service unavailable")
-    try:
-        result = symptom_checker.analyze(
-            symptoms=request.symptoms,
-            age=request.age,
-            gender=request.gender,
-            medical_history=request.medical_history
-        )
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail="Invalid input data")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Analysis failed")
+    """Analyze symptoms and suggest possible conditions"""
+    from services.symptom_checker import SymptomCheckerService
+    
+    if 'symptom_service' not in models:
+        models['symptom_service'] = SymptomCheckerService()
+    
+    result = models['symptom_service'].analyze_symptoms(request.symptoms)
+    return result
+
+@app.post("/find-doctor")
+async def find_doctor(request: DoctorRequest):
+    """Find relevant doctors based on condition"""
+    from services.doctor_mapping import DoctorMappingService
+    
+    if 'doctor_service' not in models:
+        models['doctor_service'] = DoctorMappingService()
+    
+    result = await models['doctor_service'].find_doctors(
+        request.condition, 
+        request.location
+    )
+    return result
+
+@app.post("/find-pharmacy")
+async def find_pharmacy(request: PrescriptionRequest):
+    """Find pharmacies with required medicines"""
+    from services.pharmacy_mapping import PharmacyMappingService
+    
+    if 'pharmacy_service' not in models:
+        models['pharmacy_service'] = PharmacyMappingService()
+    
+    result = models['pharmacy_service'].find_pharmacies(
+        request.medicines, 
+        request.location
+    )
+    return result
 
 @app.post("/translate")
 async def translate_text(request: TranslationRequest):
-    if not translation_service:
-        raise HTTPException(status_code=503, detail="Translation service unavailable")
-    try:
-        result = translation_service.translate(
-            text=request.text,
-            source_lang=request.source_lang,
-            target_lang=request.target_lang
-        )
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail="Invalid input data")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Translation failed")
-
-@app.post("/assess-risk")
-async def assess_chronic_risk(request: RiskAssessmentRequest):
-    if not risk_assessment:
-        raise HTTPException(status_code=503, detail="Risk assessment service unavailable")
-    try:
-        result = risk_assessment.assess_chronic_disease_risk(
-            age=request.age,
-            gender=request.gender,
-            symptoms=request.symptoms,
-            medical_history=request.medical_history,
-            lifestyle_factors=request.lifestyle_factors
-        )
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail="Invalid input data")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Risk assessment failed")
-
-@app.get("/health")
-async def health_check():
-    services = {}
+    """Translate text to target language"""
+    from services.translation_service import TranslationService
     
-    try:
-        services["symptom_checker"] = symptom_checker.is_ready() if symptom_checker else False
-    except Exception:
-        services["symptom_checker"] = False
-        
-    try:
-        services["translation"] = translation_service.is_ready() if translation_service else False
-    except Exception:
-        services["translation"] = False
-        
-    try:
-        services["risk_assessment"] = risk_assessment.is_ready() if risk_assessment else False
-    except Exception:
-        services["risk_assessment"] = False
+    if 'translation_service' not in models:
+        models['translation_service'] = TranslationService()
     
-    return {
-        "status": "healthy" if any(services.values()) else "degraded",
-        "services": services
-    }
+    result = models['translation_service'].translate(
+        request.text, 
+        request.target_language
+    )
+    return result
+
+@app.post("/speech-to-text")
+async def speech_to_text(audio: UploadFile = File(...)):
+    """Convert speech to text"""
+    from services.speech_service import SpeechService
+    
+    if 'speech_service' not in models:
+        models['speech_service'] = SpeechService()
+    
+    result = await models['speech_service'].transcribe_audio(audio)
+    return result
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
