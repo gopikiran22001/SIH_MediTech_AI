@@ -116,14 +116,8 @@ def analyze_symptoms():
         'confidence': float(confidence)
     })
 
-@app.route('/health', methods=['GET'])
-
-def health():
-
-    app.logger.info("GET /health")
-
-    return jsonify({'status': 'healthy'})
-
+# Note: The duplicate /health route from a previous version has been removed.
+# The one at the top of the endpoints is the correct one.
 
 if __name__ == '__main__':
     port = 8000
